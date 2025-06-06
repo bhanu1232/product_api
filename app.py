@@ -4,6 +4,7 @@ from database import db, Product, Category
 import json
 import os
 from sqlalchemy import desc, asc
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -31,7 +32,7 @@ def home():
     return jsonify({
         "message": "Products Store API with Database",
         "version": "2.0.0",
-        "database": "SQLite/PostgreSQL",
+        "database": "PostgreSQL",
         "features": [
             "Advanced search with filters",
             "Full-text search",
@@ -39,15 +40,26 @@ def home():
             "Price range filtering",
             "Stock availability filtering",
             "Pagination and sorting",
+            "CRUD operations",
             "100+ mock products"
         ],
         "endpoints": {
-            "products": "/products",
-            "single_product": "/products/{id}",
-            "search": "/products/search",
-            "categories": "/products/categories",
-            "brands": "/products/brands",
-            "category_products": "/products/category/{category}"
+            "get_all_products": "GET /products",
+            "get_single_product": "GET /product/{id}",
+            "create_product": "POST /products",
+            "create_product_alt": "POST /product/create",
+            "update_product": "PUT /products/{id}",
+            "delete_product": "DELETE /products/{id}",
+            "search_products": "GET /products/search",
+            "get_categories": "GET /products/categories",
+            "get_brands": "GET /products/brands",
+            "get_by_category": "GET /products/category/{category}"
+        },
+        "example_usage": {
+            "get_product": "/product/1",
+            "search": "/products/search?q=iPhone",
+            "filter": "/products?category=smartphones&minPrice=500",
+            "create": "POST /products with JSON data"
         }
     })
 
@@ -118,7 +130,7 @@ def get_all_products():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/products/<int:product_id>', methods=['GET'])
+@app.route('/product/<int:product_id>', methods=['GET'])
 def get_single_product(product_id):
     """Get a single product by ID"""
     try:
@@ -249,33 +261,145 @@ def add_product():
         if not data:
             return jsonify({"error": "No data provided"}), 400
         
+        # Validate required fields
+        required_fields = ['title', 'description', 'price', 'brand', 'category']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        
+        if missing_fields:
+            return jsonify({
+                "error": f"Missing required fields: {', '.join(missing_fields)}"
+            }), 400
+        
+        # Generate SKU if not provided
+        sku = data.get('sku')
+        if not sku:
+            # Generate SKU from brand and title
+            brand_code = data['brand'][:3].upper()
+            title_code = ''.join(data['title'].split()[:2])[:6].upper()
+            import random
+            random_num = random.randint(100, 999)
+            sku = f"{brand_code}-{title_code}-{random_num}"
+        
         # Create new product
         new_product = Product(
-            title=data.get("title", ""),
-            description=data.get("description", ""),
-            price=data.get("price", 0),
-            discount_percentage=data.get("discountPercentage", 0),
-            rating=data.get("rating", 0),
-            stock=data.get("stock", 0),
-            brand=data.get("brand", ""),
-            category=data.get("category", ""),
+            title=data.get("title"),
+            description=data.get("description"),
+            price=float(data.get("price", 0)),
+            discount_percentage=float(data.get("discountPercentage", 0)),
+            rating=float(data.get("rating", 0)),
+            stock=int(data.get("stock", 0)),
+            brand=data.get("brand"),
+            category=data.get("category"),
             thumbnail=data.get("thumbnail", ""),
             images=str(data.get("images", [])),
-            sku=data.get("sku", ""),
-            weight=data.get("weight"),
+            sku=sku,
+            weight=float(data.get("weight", 0)) if data.get("weight") else None,
             dimensions=data.get("dimensions", ""),
-            warranty_information=data.get("warrantyInformation", ""),
-            shipping_information=data.get("shippingInformation", ""),
+            warranty_information=data.get("warrantyInformation", "1 year warranty"),
+            shipping_information=data.get("shippingInformation", "Standard shipping"),
             availability_status=data.get("availabilityStatus", "In Stock"),
-            return_policy=data.get("returnPolicy", ""),
-            minimum_order_quantity=data.get("minimumOrderQuantity", 1)
+            return_policy=data.get("returnPolicy", "30-day return policy"),
+            minimum_order_quantity=int(data.get("minimumOrderQuantity", 1)),
+            meta_title=data.get("metaTitle", data.get("title")),
+            meta_description=data.get("metaDescription", data.get("description")[:160]),
+            meta_keywords=data.get("metaKeywords", f"{data.get('brand')}, {data.get('category')}")
         )
         
         db.session.add(new_product)
         db.session.commit()
         
-        return jsonify(new_product.to_dict()), 201
+        return jsonify({
+            "message": "Product created successfully",
+            "product": new_product.to_dict()
+        }), 201
     
+    except ValueError as e:
+        return jsonify({"error": f"Invalid data type: {str(e)}"}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/product/create', methods=['POST'])
+def create_product():
+    """Create a new product (alternative endpoint)"""
+    try:
+        # Handle both JSON and form data
+        if request.is_json:
+            data = request.get_json()
+        else:
+            data = request.form.to_dict()
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        # Validate required fields
+        required_fields = ['title', 'description', 'price', 'brand', 'category']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        
+        if missing_fields:
+            return jsonify({
+                "error": f"Missing required fields: {', '.join(missing_fields)}",
+                "required_fields": required_fields,
+                "provided_fields": list(data.keys())
+            }), 400
+        
+        # Generate SKU if not provided
+        sku = data.get('sku')
+        if not sku:
+            import random
+            brand_code = data['brand'][:3].upper().replace(' ', '')
+            title_words = data['title'].split()
+            title_code = ''.join(word[:2] for word in title_words[:2]).upper()
+            random_num = random.randint(100, 999)
+            sku = f"{brand_code}-{title_code}-{random_num}"
+        
+        # Handle images (convert string to list if needed)
+        images = data.get('images', [])
+        if isinstance(images, str):
+            # If it's a string, try to parse as JSON or split by comma
+            try:
+                import json
+                images = json.loads(images)
+            except:
+                images = [img.strip() for img in images.split(',') if img.strip()]
+        
+        # Create new product
+        new_product = Product(
+            title=data.get("title"),
+            description=data.get("description"),
+            price=float(data.get("price", 0)),
+            discount_percentage=float(data.get("discountPercentage", 0)),
+            rating=float(data.get("rating", 0)),
+            stock=int(data.get("stock", 0)),
+            brand=data.get("brand"),
+            category=data.get("category"),
+            thumbnail=data.get("thumbnail", ""),
+            images=str(images),
+            sku=sku,
+            weight=float(data.get("weight", 0)) if data.get("weight") else None,
+            dimensions=data.get("dimensions", ""),
+            warranty_information=data.get("warrantyInformation", "1 year warranty"),
+            shipping_information=data.get("shippingInformation", "Standard shipping"),
+            availability_status=data.get("availabilityStatus", "In Stock"),
+            return_policy=data.get("returnPolicy", "30-day return policy"),
+            minimum_order_quantity=int(data.get("minimumOrderQuantity", 1)),
+            meta_title=data.get("metaTitle", data.get("title")),
+            meta_description=data.get("metaDescription", data.get("description")[:160]),
+            meta_keywords=data.get("metaKeywords", f"{data.get('brand')}, {data.get('category')}")
+        )
+        
+        db.session.add(new_product)
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Product created successfully",
+            "product_id": new_product.id,
+            "product": new_product.to_dict()
+        }), 201
+    
+    except ValueError as e:
+        return jsonify({"error": f"Invalid data type: {str(e)}"}), 400
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
