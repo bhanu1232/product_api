@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: products-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql://products_qnmx_user:PYbv6akp0SOprUqCqgMVU27wpcf9L2sF@dpg-d1191sidbo4c739pelk0-a.oregon-postgres.render.com/products_qnmx
+      - key: PYTHON_VERSION
+        value: 3.9.0
