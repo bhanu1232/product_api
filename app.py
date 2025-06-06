@@ -29,10 +29,14 @@ db.init_app(app)
 
 @app.route('/')
 def home():
+    # Get product count
+    product_count = Product.query.count()
+    
     return jsonify({
         "message": "Products Store API with Database",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "database": "PostgreSQL",
+        "product_count": product_count,
         "features": [
             "Advanced search with filters",
             "Full-text search",
@@ -41,7 +45,7 @@ def home():
             "Stock availability filtering",
             "Pagination and sorting",
             "CRUD operations",
-            "100+ mock products"
+            "Clean database - no mock data"
         ],
         "endpoints": {
             "get_all_products": "GET /products",
@@ -456,7 +460,9 @@ def delete_product(product_id):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+# No auto-seeding of mock data on startup
 if __name__ == '__main__':
     with app.app_context():
+        # Only create tables, don't seed data
         db.create_all()
     app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
